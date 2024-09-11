@@ -1,0 +1,229 @@
+/* CS 354 - Digital Design
+ 4-bit CPU (behavioral implementation)
+*/
+module D_flip_flop(D,CLK,Q);
+ input D,CLK; 
+ output Q; 
+ wire CLK1, Y;
+ not not1 (CLK1,CLK);
+ D_latch D1(D,CLK, Y),
+ 
+D2(Y,CLK1,Q);
+endmodule 
+module multiplexer(x,y,z,out);
+input x,y,z;
+output out;
+wire x1, y1, z1;
+not g1(z1,z);
+and g2(x1,z1,x),
+ g3(y1,y,z);
+or g4(out,y1,x1);
+endmodule
+module D_latch(D,C,Q);
+ input D,C; 
+ output Q;
+ wire x,y,D1,Q1; 
+ nand nand1 (x,D, C), 
+ 
+nand2 (y,D1,C), 
+ 
+nand3 (Q,x,Q1),
+ 
+nand4 (Q1,y,Q); 
+ not not1 (D1,D);
+endmodule 
+module cpu (Instruction, WriteData, CLK);
+ input [8:0] Instruction;
+ input CLK;
+ output [3:0] WriteData;
+ wire [8:0] IR;
+ wire [3:0] A,B,Result;
+ wire [2:0] ALUctl;
+
+ instr_reg instr(Instruction,IR,CLK);
+ 
+ always @ (negedge CLK) $display("%b %b %b", IR[8:6],Sel,ALUctl); 
+ control ctl (IR[8:6],Sel,ALUctl);
+ quad2x1mux mux(IR[5:2],Result,Sel,WriteData);
+ regfile regs(IR[5:4],IR[3:2],IR[1:0],WriteData,A,B,CLK);
+ ALU alu (ALUctl, A, B, Result);
+endmodule
+module instr_reg (Instruction,IR,CLK);
+ input [8:0] Instruction;
+ input CLK;
+ output [8:0] IR;
+ D_flip_flop d0(Instruction[0],CLK,IR[0]);
+ D_flip_flop d1(Instruction[1],CLK,IR[1]);
+ D_flip_flop d2(Instruction[2],CLK,IR[2]);
+ D_flip_flop d3(Instruction[3],CLK,IR[3]);
+ D_flip_flop d4(Instruction[4],CLK,IR[4]);
+ D_flip_flop d5(Instruction[5],CLK,IR[5]);
+ D_flip_flop d6(Instruction[6],CLK,IR[6]);
+ D_flip_flop d7(Instruction[7],CLK,IR[7]);
+ D_flip_flop d8(Instruction[8],CLK,IR[8]);
+endmodule
+module control (OP,Sel,ALUctl);
+ input [2:0] OP;
+ output Sel;
+ output [2:0] ALUctl;
+ wire a,b,c,d,e,f;
+ 
+ not(OP0_inv,OP[0]);
+ not(OP1_inv,OP[1]);
+ not(OP2_inv,OP[2]);
+ 
+ //sel part of control 
+ or g0 (Sel,OP2_inv,OP[1],OP0_inv); 
+ 
+ //ALUctl[2]
+ and g1 (a,OP[2],OP0_inv),
+ 
+g2 (b,OP[0],OP2_inv,OP1_inv);
+ or g3 (ALUctl[2],a,b);
+ 
+ //ALUctl[1]
+ and g4 (c,OP1_inv,OP0_inv),
+
+ 
+g5 (d,OP1_inv,OP2_inv);
+ or g6 (ALUctl[1],c,d);
+ 
+ //ALUctl[0]
+ and g7 (e,OP[1],OP[0]),
+ 
+g8 (f,OP[2],OP0_inv);
+ or g9 (ALUctl[0],e,f);
+ 
+ 
+endmodule
+module quad2x1mux (I0,I1,Sel,Out);
+ input [3:0] I0,I1;
+ input Sel;
+ output [3:0] Out;
+ 
+ multiplexer mp1(I0[0],I1[0],Sel,Out[0]);
+ multiplexer mp2(I0[1],I1[1],Sel,Out[1]);
+ multiplexer mp3(I0[2],I1[2],Sel,Out[2]);
+ multiplexer mp4(I0[3],I1[3],Sel,Out[3]);
+ 
+ 
+endmodule
+module regfile (ReadReg1,ReadReg2,WriteReg,WriteData,ReadData1,ReadData2,CLK);
+ input [1:0] ReadReg1,ReadReg2,WriteReg;
+ input [3:0] WriteData;
+ input CLK;
+ output [3:0] ReadData1,ReadData2;
+ reg [3:0] Regs[0:3]; 
+ assign ReadData1 = Regs[ReadReg1];
+ assign ReadData2 = Regs[ReadReg2];
+ initial Regs[0] = 0;
+ always @(negedge CLK)
+ 
+Regs[WriteReg] = WriteData;
+endmodule
+module ALU (ALUctl, A, B, ALUOut);
+ input [2:0] ALUctl;
+ input [3:0] A,B;
+ output reg [3:0] ALUOut;
+ output Zero,Overflow;
+
+ always @(ALUctl, A, B) //re-evaluate if these change
+ case (ALUctl)
+ 3'b000: ALUOut <= A & B;
+ 3'b001: ALUOut <= A | B;
+ 3'b010: ALUOut <= A + B;
+ 3'b110: ALUOut <= A - B;
+ 3'b111: ALUOut <= A < B ? 1:0;
+ endcase
+endmodule
+module test_cpu;
+ reg [8:0] Instruction;
+ reg CLK;
+ wire [3:0] WriteData;
+ cpu cpu1 (Instruction, WriteData, CLK);
+ initial
+ begin
+ 
+$display("\nCLK Instruction WriteData\n-------------------------"); 
+ 
+$monitor("%b %b %d (%b)", CLK,Instruction,WriteData,WriteData);
+ 
+#1 Instruction = 9'b101_0111_01; // li $1, 7 # $1 = 7
+ 
+CLK=1;
+ 
+#1 CLK=0; // Negative edge - execute instruction
+ 
+#1 Instruction = 9'b101_0101_10; // li $2, 5 # $2 = 5 
+ 
+CLK=1;
+ 
+#1 CLK=0; // Negative edge - execute instruction
+ 
+#1 Instruction = 9'b001_01_10_11; // sub $3, $1, $2 # $3 = 2
+ 
+CLK=1;
+ 
+#1 CLK=0; // Negative edge - execute instruction
+ 
+//li $t3, 10 # $t3 = 10 (4'b1010)
+ 
+#1 Instruction = 9'b101_1010_11;
+ 
+CLK=1;
+ 
+#1 CLK=0; // Negative edge - execute instruction
+ 
+//or $t2, $t2, $t3 # $t2 = 15 (4'b1111)
+ 
+#1 Instruction = 9'b011_10_11_10;
+ 
+CLK=1;
+ 
+#1 CLK=0; // Negative edge - execute instruction
+ 
+ //and $t3, $t2, $t3 # $t3 = 10 (4'b1010)
+ 
+#1 Instruction = 9'b010_10_11_11;
+ 
+CLK=1;
+ 
+#1 CLK=0; // Negative edge - execute instruction
+ 
+//slt $t2, $t3, $t2 # $t2 = 1
+ 
+#1 Instruction = 9'b100_11_10_10;
+
+ 
+CLK=1;
+ 
+#1 CLK=0; // Negative edge - execute instruction
+ 
+ 
+//add $t2, $t3, $t2 # $t2 = 11 (4'b1011=-5)
+ 
+#1 Instruction = 9'b000_10_11_10;
+ 
+CLK=1;
+ 
+#1 CLK=0; // Negative edge - execute instruction
+ 
+ 
+//add $t3, $t1, $t2 # $t3 = 2 (7+(-5)=2)
+ 
+#1 Instruction = 9'b000_01_10_11;
+ 
+CLK=1;
+ 
+#1 CLK=0; // Negative edge - execute instruction
+ 
+ 
+//slt $t1, $t2, $t3 # $t1 = 0 (behavioral ALU) or 1 (gate-level ALU)
+ #1 Instruction = 9'b100_10_11_01;
+ 
+CLK=1;
+ 
+#1 CLK=0; // Negative edge - execute instruction 
+ 
+ end
+endmodule
